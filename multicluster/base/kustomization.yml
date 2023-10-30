@@ -1,9 +1,10 @@
-bases:
-  - github.com/stefanprodan/podinfo/kustomize
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 
 resources:
-  - frontend.yml
-  - ns.yml
+  - github.com/stefanprodan/podinfo/kustomize
 
 patches:
-  - patch.yml
+- path: frontend.yml
+- path: ns.yml
+- path: patch.yml

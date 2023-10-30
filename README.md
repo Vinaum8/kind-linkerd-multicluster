@@ -320,7 +320,7 @@ for ctx in kind-primary kind-remote1 ; do
   echo "Adding test services on cluster: ${ctx} ........."
   kubectl --context=${ctx} create ns test
   kubectl --context=${ctx} apply \
-    -n test -k "github.com/adavarski/kind-linkerd-multicluster/multicluster/${ctx}/"
+    -n test -k "github.com/Vinaum8/kind-linkerd-multicluster/multicluster/${ctx}/"
 
   kubectl --context=${ctx} -n test \
     rollout status deploy/podinfo || break
