@@ -2,5 +2,5 @@ bases:
   - ../base
 
 patches:
-  - podinfo.yml
-  - frontend.yml
+- path: podinfo.yml
+- path: frontend.yml

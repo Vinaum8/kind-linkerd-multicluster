@@ -75,7 +75,7 @@ docker network inspect kind -f '{{.IPAM.Config}}'
 
 Example Output:
 docker network inspect kind -f '{{.IPAM.Config}}'
-[{172.24.0.0/16  172.24.0.1 map[]} {fc00:f853:ccd:e793::/64   map[]}]
+[{172.18.0.0/16  172.18.0.1 map[]} {fc00:f853:ccd:e793::/64   map[]}]
 
 
 kubectl --context=kind-primary apply -f - <<EOF
@@ -86,7 +86,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 172.24.0.61-172.24.0.70
+  - 172.18.0.61-172.18.0.70
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -106,7 +106,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 172.24.0.71-172.24.0.80
+  - 172.18.0.71-172.18.0.80
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -126,7 +126,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 172.24.0.81-172.24.0.90
+  - 172.18.0.81-172.18.0.90
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -164,27 +164,27 @@ step certificate create \
 alias lk='linkerd'
 alias ka='kubectl apply -f '
 
-for ctx in kind-primary kind-remote1 kind-remote2; do                   
+for ctx in kind-primary kind-remote1; do                   
   echo "install crd ${ctx}"
-  lk install --context=${ctx} --crds | ka - --context=${ctx};
+  linkerd install --context=${ctx} --crds | kubectl apply -f - --context=${ctx};
 
   echo "install linkerd ${ctx}";
-  lk install --context=${ctx} \
+  linkerd install --context=${ctx} \
     --identity-trust-anchors-file=ca.crt \
     --identity-issuer-certificate-file=issuer.crt \
-    --identity-issuer-key-file=issuer.key | ka - --context=${ctx};
+    --identity-issuer-key-file=issuer.key | kubectl apply -f - --context=${ctx};
 
   echo "install viz ${ctx}";
-  lk --context=${ctx} viz install | ka - --context=${ctx};
+  linkerd --context=${ctx} viz install | kubectl apply -f - --context=${ctx};
 
   echo "install multicluster ${ctx}";    
-  lk --context=${ctx} multicluster install | ka - --context=${ctx};
+  linkerd --context=${ctx} multicluster install | kubectl apply -f - --context=${ctx};
 
   echo "install smi ${ctx}";        
-  lk smi install --context=${ctx}  | ka - --context=${ctx};
+  linkerd smi install --context=${ctx}  | kubectl apply -f - --context=${ctx};
 done
 
-for ctx in kind-primary kind-remote1 kind-remote2; do
+for ctx in kind-primary kind-remote1; do
   printf "Checking cluster: ${ctx} ........."
   while [ "$(kubectl --context=${ctx} -n linkerd-multicluster get service linkerd-gateway -o 'custom-columns=:.status.loadBalancer.ingress[0].ip' --no-headers)" = "<none>" ]; do
       printf '.'
@@ -216,8 +216,8 @@ It is an issue with the way that Kind sets up access to the API server. You need
 ---------------Comment(no execute) Error: probe-gateway-kind-primary.linkerd-multicluster mirrored from cluster [kind-primary] has no endpoints--------------
 
 ### Link remote1 & 2 to primary
-$ docker inspect primary-control-plane|grep IPAddress
-                    "IPAddress": "172.19.0.3",
+$ docker inspect primary-control-plane | grep IPAddress
+                    "IPAddress": "172.18.0.2",
 
 $ docker ps -a
 CONTAINER ID   IMAGE                  COMMAND                  CREATED          STATUS          PORTS                       NAMES
@@ -225,18 +225,8 @@ ccd5df751e84   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago 
 bfb402dcac34   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:46839->6443/tcp   remote2-control-plane
 024d33086509   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:35679->6443/tcp   primary-control-plane
 
-$ linkerd multicluster link --context="kind-primary" --cluster-name="kind-primary" --api-server-address="https://172.19.0.3:6443"| ka - --context=kind-remote2
-secret/cluster-credentials-kind-primary configured
-link.multicluster.linkerd.io/kind-primary unchanged
-clusterrole.rbac.authorization.k8s.io/linkerd-service-mirror-access-local-resources-kind-primary unchanged
-clusterrolebinding.rbac.authorization.k8s.io/linkerd-service-mirror-access-local-resources-kind-primary unchanged
-role.rbac.authorization.k8s.io/linkerd-service-mirror-read-remote-creds-kind-primary unchanged
-rolebinding.rbac.authorization.k8s.io/linkerd-service-mirror-read-remote-creds-kind-primary unchanged
-serviceaccount/linkerd-service-mirror-kind-primary unchanged
-deployment.apps/linkerd-service-mirror-kind-primary unchanged
-service/probe-gateway-kind-primary unchanged
+$ linkerd multicluster link --context="kind-primary" --cluster-name="kind-primary" --api-server-address="https://172.18.0.2:6443"| kubectl apply -f - --context=kind-remote1
 
-$ linkerd multicluster link --context="kind-primary" --cluster-name="kind-primary" --api-server-address="https://172.19.0.3:6443"| ka - --context=kind-remote1
 secret/cluster-credentials-kind-primary configured
 link.multicluster.linkerd.io/kind-primary unchanged
 clusterrole.rbac.authorization.k8s.io/linkerd-service-mirror-access-local-resources-kind-primary unchanged
@@ -249,12 +239,12 @@ service/probe-gateway-kind-primary unchanged
 
 ### Check
 
-for ctx in kind-primary kind-remote1 kind-remote2; do
+for ctx in kind-primary kind-remote1; do
   echo "Checking link....${ctx}"
-  lk --context=${ctx} multicluster check
+  linkerd --context=${ctx} multicluster check
 
   echo "Checking gateways ...${ctx}"
-  lk --context=${ctx} multicluster gateways
+  linkerd --context=${ctx} multicluster gateways
 
   echo "..............done ${ctx}"
 done
@@ -323,10 +313,10 @@ CLUSTER       ALIVE    NUM_SVC      LATENCY
 kind-primary  True           0          1ms  
 ..............done kind-remote2
 
-$ for c in kind-primary kind-remote1 kind-remote2 ; do lk --context="$c" mc check;done
+$ for c in kind-primary kind-remote1; do linkerd --context="$c" mc check;done
 
 
-for ctx in kind-primary kind-remote1 kind-remote2; do
+for ctx in kind-primary kind-remote1 ; do
   echo "Adding test services on cluster: ${ctx} ........."
   kubectl --context=${ctx} create ns test
   kubectl --context=${ctx} apply \
@@ -338,7 +328,7 @@ for ctx in kind-primary kind-remote1 kind-remote2; do
 done
 
 
-for ctx in kind-primary kind-remote1 kind-remote2; do
+for ctx in kind-primary kind-remote1 ; do
   echo "Check pods on cluster: ${ctx} ........."
   kubectl get pod -n test --context=${ctx}
 done
