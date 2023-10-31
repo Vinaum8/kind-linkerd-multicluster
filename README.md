@@ -312,26 +312,31 @@ Checking gateways ...kind-remote2
 CLUSTER       ALIVE    NUM_SVC      LATENCY  
 kind-primary  True           0          1ms  
 ..............done kind-remote2
+```
 
+```bash
 $ for c in kind-primary kind-remote1; do linkerd --context="$c" mc check;done
+```
 
-
-for ctx in kind-primary kind-remote1 ; do
+Adicionar os serviços de testes nos clusters criados:
+```bash
+for ctx in kind-primary kind-remote1; do
   echo "Adding test services on cluster: ${ctx} ........."
-  kubectl --context=${ctx} create ns test
   kubectl --context=${ctx} apply \
-    -n test -k "github.com/Vinaum8/kind-linkerd-multicluster/multicluster/${ctx}/"
-
+    -n test -k "Documents/learning/linkerd/website/multicluster/${ctx}/"
   kubectl --context=${ctx} -n test \
     rollout status deploy/podinfo || break
   echo "-------------"
 done
+```
 
-
+Checar o status dos pods no cluster:
+```bash
 for ctx in kind-primary kind-remote1 ; do
   echo "Check pods on cluster: ${ctx} ........."
   kubectl get pod -n test --context=${ctx}
 done
+```
 
 kubectl port-forward -n test svc/frontend 8080:8080 --context=kind-primary
 Browser: http://localhost:8080
@@ -339,33 +344,29 @@ Browser: http://localhost:8080
 kubectl port-forward -n test svc/frontend 8080:8080 --context=kind-remote1
 Browser: http://localhost:8080
 
-kubectl port-forward -n test svc/frontend 8080:8080 --context=kind-remote2
-Browser: http://localhost:8080
-
-for ctx in kind-primary kind-remote1 kind-remote2; do
+```bash
+for ctx in kind-primary kind-remote1; do
   echo -en "\n\nLabel svc podinfo on cluster: ${ctx} .........\n"
   kubectl label svc -n test podinfo mirror.linkerd.io/exported=true --context=${ctx}
   sleep 4
 
   echo "Check services transConnected (if word exists )....on cluster ${ctx}"
   kubectl get svc -n test --context=${ctx}
-
 done
+```
 
-Check: 
-$ kubectl get svc --context=kind-primary -n linkerd-multicluster linkerd-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-172.17.255.10
-$ kubectl get endpoints --context=kind-remote1 -n test podinfo -o jsonpath='{.subsets[*].addresses[*].ip}'
-10.20.0.17 10.20.0.18
-$ kubectl get endpoints --context=kind-remote2 -n test podinfo -o jsonpath='{.subsets[*].addresses[*].ip}'
-10.30.0.16 10.30.0.18
-$ kubectl get endpoints --context=kind-primary -n test podinfo -o jsonpath='{.subsets[*].addresses[*].ip}'
-10.10.0.16 10.10.0.18
+### Check and Traffic Split
+```bash 
+kubectl get svc --context=kind-primary -n linkerd-multicluster linkerd-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 kubectl get svc --context=kind-remote1 -n linkerd-multicluster linkerd-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-172.17.255.30
+``` 
+
+```bash 
+kubectl get endpoints --context=kind-remote1 -n test podinfo -o jsonpath='{.subsets[*].addresses[*].ip}'
+
 kubectl get endpoints --context=kind-primary -n test podinfo -o jsonpath='{.subsets[*].addresses[*].ip}'
-10.10.0.16 10.10.0.18
+```
 
 kubectl --context=kind-primary apply -f - <<EOF
 apiVersion: split.smi-spec.io/v1alpha1
@@ -420,6 +421,9 @@ kubectl get endpoints --context=kind-primary -n test podinfo-kind-remote1 -o jso
 
 $ kubectl port-forward -n test --context=kind-primary svc/frontend 8080
 
+
+### Helm - Nginx Ingress
+```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
 for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Install ingress-nginx - ${ctx}"
@@ -431,21 +435,23 @@ for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Breeding an income for the podinfo - ${ctx}"
   kubectl --context=${ctx} -n test create ingress frontend --class nginx --rule="frontend-${ctx}.192.168.1.100.nip.io/*=frontend:8080" --annotation "nginx.ingress.kubernetes.io/service-upstream=true"
 done
+```
 
-
+```bash
 for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Add the hostname and IP to your /etc/hosts and wait for ingress-nginx to assign IP to the ingress, about 30s"
   kubectl --context=${ctx} get ingress -n test 
 done
+```
 
-$ grep front /etc/hosts
+```bash 
+grep front /etc/hosts
+```
 172.17.255.11   frontend-kind-primary.192.168.1.100.nip.io   
 172.17.255.31   frontend-kind-remote1.192.168.1.100.nip.io   
 172.17.255.51   frontend-kind-remote2.192.168.1.100.nip.io  
 
 Browser: frontend-primary.192.168.1.100.nip.io
-```
-
 
 ## Clean local environment
 ```
@@ -457,10 +463,8 @@ $ kind delete cluster --name=remote2
 Deleting cluster "remote2" .
 ```
 
-### Ref:
+### Reference:
 - Linkerd: https://linkerd.io
+- https://linkerd.io/2.14/tasks/multicluster/#linking-the-clusters
 - ServiceMesh: https://smi-spec.io/
 - Credits: https://github.com/adonaicosta/linkerd-multicluster & https://github.com/olix0r/l2-k3d-multi/
-
-### TODO : Fix mc link and podinfo (distributing the load between the clusters) 
-
