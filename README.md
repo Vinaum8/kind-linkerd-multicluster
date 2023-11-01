@@ -22,7 +22,6 @@ export PATH=$PATH:/home/davar/.linkerd2/bin
 
 ### Setup k8s clusters
 
-
 Run the `setup-clusters.sh` script. It creates three KinD clusters:
 
 - One primary cluster (`primary`)
@@ -59,7 +58,7 @@ Example Output:
 ### (Alternative) KinD cluster and MetalLB setup not using setup-clusters.sh :
 
 ```
-Note: kind-primary.yaml & kind-remote1.yaml & kind-remote2.yaml ---> apiServerAddress: 192.168.1.100 # PUT YOUR IP ADDRESSS OF YOUR MACHINE HERE DUMMIE! ;-) 
+Note: kind-primary.yaml & kind-remote1.yaml & kind-remote2.yaml ---> apiServerAddress: 192.168.3.2 # PUT YOUR IP ADDRESSS OF YOUR MACHINE HERE DUMMIE! ;-) 
 
 kind create cluster --config kind-primary.yaml
 kind create cluster --config kind-remote1.yaml
@@ -137,18 +136,25 @@ metadata:
   name: example
   namespace: metallb-system
 EOF
-
-
 ```
+
 ### Setup Linkerd multi-cluster
 
-```
+```bash
 kubectl config get-contexts 
 CURRENT   NAME            CLUSTER         AUTHINFO        NAMESPACE
           kind-primary   kind-primary   kind-primary   
           kind-remote1    kind-remote1    kind-remote1    
 *         kind-remote2    kind-remote2    kind-remote2  
+```
 
+#### Create Certificates
+* We like to use the step CLI to generate these certificates. If you prefer openssl instead, feel free to use that! To generate the trust anchor with step, you can run:
+* https://smallstep.com/cli/
+* https://linkerd.io/2.14/tasks/multicluster/
+
+
+```bash
 mkdir certs && cd certs
 step certificate create \
   root.linkerd.cluster.local \
@@ -164,7 +170,7 @@ step certificate create \
 alias lk='linkerd'
 alias ka='kubectl apply -f '
 
-for ctx in kind-primary kind-remote1; do                   
+for ctx in kind-primary kind-remote1 kind-remote2; do                   
   echo "install crd ${ctx}"
   linkerd install --context=${ctx} --crds | kubectl apply -f - --context=${ctx};
 
@@ -183,8 +189,10 @@ for ctx in kind-primary kind-remote1; do
   echo "install smi ${ctx}";        
   linkerd smi install --context=${ctx}  | kubectl apply -f - --context=${ctx};
 done
+```
 
-for ctx in kind-primary kind-remote1; do
+```bash
+for ctx in kind-primary kind-remote1 kind-remote2; do
   printf "Checking cluster: ${ctx} ........."
   while [ "$(kubectl --context=${ctx} -n linkerd-multicluster get service linkerd-gateway -o 'custom-columns=:.status.loadBalancer.ingress[0].ip' --no-headers)" = "<none>" ]; do
       printf '.'
@@ -193,6 +201,7 @@ for ctx in kind-primary kind-remote1; do
   echo "`kubectl --context=${ctx} -n linkerd-multicluster get service linkerd-gateway -o 'custom-columns=:.status.loadBalancer.ingress[0].ip' --no-headers`"
   printf "\n"
 done
+```
 
 ### Example Output:
 Checking cluster: kind-primary .........172.17.255.10
@@ -201,17 +210,18 @@ Checking cluster: kind-remote1 .........172.17.255.30
 
 Checking cluster: kind-remote2 .........172.17.255.50
 
----------------Comment(no execute) Error: probe-gateway-kind-primary.linkerd-multicluster mirrored from cluster [kind-primary] has no endpoints--------------
+---------------Comment(no execute) 
+
+Error: probe-gateway-kind-primary.linkerd-multicluster mirrored from cluster [kind-primary] has no endpoints--------------
 It is an issue with the way that Kind sets up access to the API server. You need to use the --api-server-address to tell Linkerd how to access the API server. There is an example here: https://github.com/olix0r/l2-k3d-multi/blob/master/link.sh
 
 # Unfortunately, the credentials have the API server IP as addressed from
 # localhost and not the docker network, so we have to patch that up.
 
-
-### lk --context=kind-primary multicluster link --cluster-name kind-primary | ka - --context=kind-remote1
-### lk --context=kind-remote1 multicluster link --cluster-name kind-remote1 | ka - --context=kind-primary
-### lk --context=kind-primary multicluster link --cluster-name kind-primary | ka - --context=kind-remote2
-### lk --context=kind-remote2 multicluster link --cluster-name kind-remote2 | ka - --context=kind-primary
+ linkerd --context=kind-primary multicluster link --cluster-name kind-primary --api-server-address="https://172.18.0.4:6443" | kubectl apply -f - --context=kind-remote1
+ linkerd --context=kind-remote1 multicluster link --cluster-name kind-remote1 --api-server-address="https://172.18.0.6:6443" | kubectl apply -f - --context=kind-primary
+ linkerd --context=kind-primary multicluster link --cluster-name kind-primary --api-server-address="https://172.18.0.4:6443" | kubectl apply -f - --context=kind-remote2
+ linkerd --context=kind-remote2 multicluster link --cluster-name kind-remote2 --api-server-address="https://172.18.0.9:6443" | kubectl apply -f - --context=kind-primary
 
 ---------------Comment(no execute) Error: probe-gateway-kind-primary.linkerd-multicluster mirrored from cluster [kind-primary] has no endpoints--------------
 
@@ -225,7 +235,7 @@ ccd5df751e84   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago 
 bfb402dcac34   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:46839->6443/tcp   remote2-control-plane
 024d33086509   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:35679->6443/tcp   primary-control-plane
 
-$ linkerd multicluster link --context="kind-primary" --cluster-name="kind-primary" --api-server-address="https://172.18.0.2:6443"| kubectl apply -f - --context=kind-remote1
+$ linkerd multicluster link --context="kind-primary" --cluster-name="kind-primary" --api-server-address="https://172.18.0.4:6443" | kubectl apply -f - --context=kind-remote1
 
 secret/cluster-credentials-kind-primary configured
 link.multicluster.linkerd.io/kind-primary unchanged
@@ -239,7 +249,8 @@ service/probe-gateway-kind-primary unchanged
 
 ### Check
 
-for ctx in kind-primary kind-remote1; do
+```bash
+for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Checking link....${ctx}"
   linkerd --context=${ctx} multicluster check
 
@@ -248,6 +259,7 @@ for ctx in kind-primary kind-remote1; do
 
   echo "..............done ${ctx}"
 done
+```
 
 Example Output:
 Checking link....kind-primary
@@ -315,15 +327,15 @@ kind-primary  True           0          1ms
 ```
 
 ```bash
-$ for c in kind-primary kind-remote1; do linkerd --context="$c" mc check;done
+$ for c in kind-primary kind-remote1 kind-remote2; do linkerd --context="$c" mc check; done
 ```
 
 Adicionar os serviços de testes nos clusters criados:
 ```bash
-for ctx in kind-primary kind-remote1; do
+for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Adding test services on cluster: ${ctx} ........."
   kubectl --context=${ctx} apply \
-    -n test -k "Documents/learning/linkerd/website/multicluster/${ctx}/"
+    -n test -k "github.com/Vinaum8/website/multicluster/${ctx}/"
   kubectl --context=${ctx} -n test \
     rollout status deploy/podinfo || break
   echo "-------------"
@@ -332,7 +344,7 @@ done
 
 Checar o status dos pods no cluster:
 ```bash
-for ctx in kind-primary kind-remote1 ; do
+for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Check pods on cluster: ${ctx} ........."
   kubectl get pod -n test --context=${ctx}
 done
@@ -345,7 +357,7 @@ kubectl port-forward -n test svc/frontend 8080:8080 --context=kind-remote1
 Browser: http://localhost:8080
 
 ```bash
-for ctx in kind-primary kind-remote1; do
+for ctx in kind-primary kind-remote1 kind-remote2; do
   echo -en "\n\nLabel svc podinfo on cluster: ${ctx} .........\n"
   kubectl label svc -n test podinfo mirror.linkerd.io/exported=true --context=${ctx}
   sleep 4
@@ -360,6 +372,8 @@ done
 kubectl get svc --context=kind-primary -n linkerd-multicluster linkerd-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 kubectl get svc --context=kind-remote1 -n linkerd-multicluster linkerd-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+
+kubectl get svc --context=kind-remote2 -n linkerd-multicluster linkerd-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 ``` 
 
 ```bash 
@@ -367,6 +381,15 @@ kubectl get endpoints --context=kind-remote1 -n test podinfo -o jsonpath='{.subs
 
 kubectl get endpoints --context=kind-primary -n test podinfo -o jsonpath='{.subsets[*].addresses[*].ip}'
 ```
+
+
+```bash
+kubectl --context=kind-primary -n test exec -c nginx -it \
+  $(kubectl --context=kind-primary -n test get po -l app=frontend \
+    --no-headers -o custom-columns=:.metadata.name) \
+  -- /bin/sh -c "apk add curl && curl http://podinfo-kind-remote1:9898"
+```
+
 
 kubectl --context=kind-primary apply -f - <<EOF
 apiVersion: split.smi-spec.io/v1alpha1
@@ -379,36 +402,7 @@ spec:
   backends:
   - service: podinfo
     weight: 40
-  - service: podinfo-kind-primary
-    weight: 40
-EOF    
-
-
-kubectl --context=kind-remote1 apply -f - <<EOF
-apiVersion: split.smi-spec.io/v1alpha1
-kind: TrafficSplit
-metadata:
-  name: podinfo
-  namespace: test
-spec:
-  service: podinfo
-  backends:
-  - service: podinfo
-    weight: 30
   - service: podinfo-kind-remote1
-    weight: 30
-EOF    
-
-kubectl --context=kind-remote2 apply -f - <<EOF
-apiVersion: split.smi-spec.io/v1alpha1
-kind: TrafficSplit
-metadata:
-  name: podinfo
-  namespace: test
-spec:
-  service: podinfo
-  backends:
-  - service: podinfo
     weight: 30
   - service: podinfo-kind-remote2
     weight: 30
@@ -433,7 +427,7 @@ for ctx in kind-primary kind-remote1 kind-remote2; do
   kubectl rollout status deploy -n ingress-nginx ingress-nginx-controller --context=${ctx}
 
   echo "Breeding an income for the podinfo - ${ctx}"
-  kubectl --context=${ctx} -n test create ingress frontend --class nginx --rule="frontend-${ctx}.192.168.1.100.nip.io/*=frontend:8080" --annotation "nginx.ingress.kubernetes.io/service-upstream=true"
+  kubectl --context=${ctx} -n test create ingress frontend --class nginx --rule="frontend-${ctx}.192.168.3.2.nip.io/*=frontend:8080" --annotation "nginx.ingress.kubernetes.io/service-upstream=true"
 done
 ```
 
@@ -447,11 +441,11 @@ done
 ```bash 
 grep front /etc/hosts
 ```
-172.17.255.11   frontend-kind-primary.192.168.1.100.nip.io   
-172.17.255.31   frontend-kind-remote1.192.168.1.100.nip.io   
-172.17.255.51   frontend-kind-remote2.192.168.1.100.nip.io  
+172.17.255.11   frontend-kind-primary.192.168.3.2.nip.io   
+172.17.255.31   frontend-kind-remote1.192.168.3.2.nip.io   
+172.17.255.51   frontend-kind-remote2.192.168.3.2.nip.io  
 
-Browser: frontend-primary.192.168.1.100.nip.io
+Browser: frontend-primary.192.168.3.2.nip.io
 
 ## Clean local environment
 ```

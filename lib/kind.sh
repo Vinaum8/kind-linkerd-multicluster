@@ -24,7 +24,7 @@ function kind::cluster::create {
 	kind create cluster \
 		--name=${cluster_name} \
 		--quiet \
-		--image=kindest/node:v1.25.3 \
+		--image=kindest/node:v1.27.3 \
 		--config=<(cat <<-EOM
 			kind: Cluster
 			apiVersion: kind.x-k8s.io/v1alpha4

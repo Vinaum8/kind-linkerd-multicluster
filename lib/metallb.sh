@@ -15,7 +15,7 @@ function metallb::deploy {
 
 	kubectl apply \
 		--context="kind-${cluster_name}" \
-		-f https://raw.githubusercontent.com/metallb/metallb/v0.13.7/config/manifests/metallb-native.yaml \
+		-f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml \
 		>/dev/null
 
 	kubectl wait deployments.apps/controller \
