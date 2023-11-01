@@ -218,34 +218,29 @@ It is an issue with the way that Kind sets up access to the API server. You need
 # Unfortunately, the credentials have the API server IP as addressed from
 # localhost and not the docker network, so we have to patch that up.
 
- linkerd --context=kind-primary multicluster link --cluster-name kind-primary --api-server-address="https://172.18.0.4:6443" | kubectl apply -f - --context=kind-remote1
- linkerd --context=kind-remote1 multicluster link --cluster-name kind-remote1 --api-server-address="https://172.18.0.6:6443" | kubectl apply -f - --context=kind-primary
- linkerd --context=kind-primary multicluster link --cluster-name kind-primary --api-server-address="https://172.18.0.4:6443" | kubectl apply -f - --context=kind-remote2
- linkerd --context=kind-remote2 multicluster link --cluster-name kind-remote2 --api-server-address="https://172.18.0.9:6443" | kubectl apply -f - --context=kind-primary
+Se o contexto é o primário, você deve coletar o endpoint da API do cluster primário e adicionar no comando.
+No remote1 e remote2 também, consequentemente.
+Comando:
+```bash
+k get endpoints -n default --context=kind-primary
+k get endpoints -n default --context=kind-remote1
+k get endpoints -n default --context=kind-remote2
+```
 
----------------Comment(no execute) Error: probe-gateway-kind-primary.linkerd-multicluster mirrored from cluster [kind-primary] has no endpoints--------------
 
-### Link remote1 & 2 to primary
-$ docker inspect primary-control-plane | grep IPAddress
-                    "IPAddress": "172.18.0.2",
+```bash
+ linkerd --context=kind-primary multicluster link --cluster-name kind-primary --api-server-address="172.18.0.3:6443" | kubectl apply -f - --context=kind-remote1
+ linkerd --context=kind-remote1 multicluster link --cluster-name kind-remote1 --api-server-address="172.18.0.7:6443" | kubectl apply -f - --context=kind-primary
+ linkerd --context=kind-primary multicluster link --cluster-name kind-primary --api-server-address="172.18.0.3:6443" | kubectl apply -f - --context=kind-remote2
+ linkerd --context=kind-remote2 multicluster link --cluster-name kind-remote2 --api-server-address="172.18.0.9:6443" | kubectl apply -f - --context=kind-primary
 
-$ docker ps -a
-CONTAINER ID   IMAGE                  COMMAND                  CREATED          STATUS          PORTS                       NAMES
-ccd5df751e84   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:40727->6443/tcp   remote1-control-plane
-bfb402dcac34   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:46839->6443/tcp   remote2-control-plane
-024d33086509   kindest/node:v1.25.3   "/usr/local/bin/entr…"   47 minutes ago   Up 46 minutes   127.0.0.1:35679->6443/tcp   primary-control-plane
+```
+---------------
+Comment(no execute) 
 
-$ linkerd multicluster link --context="kind-primary" --cluster-name="kind-primary" --api-server-address="https://172.18.0.4:6443" | kubectl apply -f - --context=kind-remote1
+Error: probe-gateway-kind-primary.linkerd-multicluster mirrored from cluster [kind-primary] has no endpoints
 
-secret/cluster-credentials-kind-primary configured
-link.multicluster.linkerd.io/kind-primary unchanged
-clusterrole.rbac.authorization.k8s.io/linkerd-service-mirror-access-local-resources-kind-primary unchanged
-clusterrolebinding.rbac.authorization.k8s.io/linkerd-service-mirror-access-local-resources-kind-primary unchanged
-role.rbac.authorization.k8s.io/linkerd-service-mirror-read-remote-creds-kind-primary unchanged
-rolebinding.rbac.authorization.k8s.io/linkerd-service-mirror-read-remote-creds-kind-primary unchanged
-serviceaccount/linkerd-service-mirror-kind-primary unchanged
-deployment.apps/linkerd-service-mirror-kind-primary unchanged
-service/probe-gateway-kind-primary unchanged
+--------------
 
 ### Check
 
@@ -324,13 +319,26 @@ Checking gateways ...kind-remote2
 CLUSTER       ALIVE    NUM_SVC      LATENCY  
 kind-primary  True           0          1ms  
 ..............done kind-remote2
-```
 
-```bash
-$ for c in kind-primary kind-remote1 kind-remote2; do linkerd --context="$c" mc check; done
-```
+### Get endpoint for --api-server-address
+➜ docker inspect primary-control-plane | grep IPAddress
 
-Adicionar os serviços de testes nos clusters criados:
+    "IPAddress": "172.18.0.2"
+
+➜ docker inspect primary-control-plane | grep IPAddress
+
+    "IPAddress": "172.18.0.3",
+
+➜ docker inspect remote1-control-plane | grep IPAddress
+
+    "IPAddress": "172.18.0.7",
+
+➜ docker inspect remote2-control-plane | grep IPAddress
+
+    "IPAddress": "172.18.0.9",
+
+
+### Adicionar os serviços de testes nos clusters criados:
 ```bash
 for ctx in kind-primary kind-remote1 kind-remote2; do
   echo "Adding test services on cluster: ${ctx} ........."
